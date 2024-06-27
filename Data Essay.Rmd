@@ -1,0 +1,240 @@
+---
+title: "Data Essay Stadtentwicklung Stadt Zürich"
+subtitle: "Zufriedenheit mit Wohnungsangebot"
+author: "Nicolas Aerni"
+date: "2024-06-27"
+output: html_document
+---
+
+<style type="text/css">
+
+  body{
+  font-size: 12pt;
+  text-align: justify;
+}
+
+h1.title {
+  text-align: center;
+}
+
+h3.subtitle {
+  text-align: center;
+}
+
+h4.author {
+  text-align: center;
+}
+h4.date {
+  text-align: center;
+}
+</style>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Vorbemerkung
+Für den vorliegenden Daten-Essay wurden Daten der Bevölkerungsbefragung der Stadt Zürich von [Stadt Zürich Open Data](https://data.stadt-zuerich.ch/dataset?q=bev%C3%B6lkerungsbefragung) verwendet. Die Daten wurden mit der Variable pgewicht gewichtet, um eine aussagekräftige Analyse zu ermöglichen.
+
+<details><summary><span style="color: grey; font-size: 11px">Show R code</span></summary>
+```{r message=FALSE, warning=FALSE}
+rm(list=ls())
+
+library(tidyverse)
+library(magrittr)
+library(hutils)
+library(MASS)
+library(viridis)
+library(gridExtra)
+library(lmtest)
+library(knitr)
+library(brant)
+library(glm.predict)
+# data load and preparation
+#setwd("/Users/brutus/Desktop")
+dat <- read.csv("bev473od4732.csv")
+
+#outcome variable
+#A2004ag01 Frage F4:7 Wohnungsangebot
+dat$A2004ag01 %<>% as.factor()
+#levels(dat$A2004ag01)
+
+#covariates
+dat$A2001aa01 %<>% as.factor()
+#levels(dat$A2001aa01)
+dat$A2001aa01 <- factor(dat$A2001aa01, levels = c("Keine Angabe","Sehr gerne", "Eher gerne", "Eher ungern", "Sehr ungern"))
+dat$methode %<>% as.factor()
+dat$Jahr %<>% as.factor()
+dat$A1BVSKreis01 %<>% as.factor()
+dat$A1BVSKreis01 <- factor(dat$A1BVSKreis01, levels = c("Kreis 1", "Kreis 2", "Kreis 3", "Kreis 4", "Kreis 5", "Kreis 6", "Kreis 7", "Kreis 8", "Kreis 9", "Kreis 10", "Kreis 11", "Kreis 12"))
+#levels(dat$A1BVSKreis01)
+dat$A1BVSAlterV03 %<>% as.factor()
+#levels(dat$A1BVSAlterV03)
+dat$A1BVSSex01 %<>% as.factor()
+#levels(dat$A1BVSSex01)
+dat$A3008aa01 <- as.numeric(dat$A3008aa01)
+#summary(dat$A3008aa01)
+
+df <- weight2rows(dat[,c("Jahr", "methode", "pgewicht", "A2001aa01", "A2004ag01", "A1BVSKreis01", "A1BVSAlterV03", "A1BVSSex01", "A3008aa01")], "pgewicht")
+colnames(df) <- c("Jahr", "Methode", "PGewicht", "Beliebtheit", "Wohnungsangebot", "Kreis", "Alter", "Geschlecht", "Mietzins monatlich")
+```
+</details>
+<br>
+
+## Einführung  
+Die Stadt Zürich ist ein beliebter Lebensraum und die Wohnungsknappheit wird regelmässig in den Medien und in der Politik thematisiert. Gerade in den letzten Jahren war der Wohnungsmarkt von einer erhöhten Dynamik geprägt. So hat die Schweizerische Nationalbank auf die durch die Covid-19 Pandemie ausgelöste volatile Inflation mit einer Straffung ihrer Geldpolitik reagiert, die sich durch die Hypothekarzinssätze auf den Wohnungs- und unsbesondere den Mietermarkt übertragen hat. Kurzum: Die Mieten sind teurer geworden, was die Wahrnehmung zur Knappheit von bezahlbaren Wohnungen sicher weiter beeinflusst hat.
+
+Für die vorliegende Analyse werden die Antworten auf die Frage "F4. Wie zufrieden sind Sie mit den folgenden Einrichtungen und Angeboten in der Stadt Zürich?" zum Item "Wohnungsangebot" untersucht.
+
+Die folgenden zwei Heatmaps zeigen einerseits, dass sich die Zufriedenheit mit dem Wohnungsangebot in der Stadt Zürich zwischen 2021 und 2023 merklich verschlechtert hat (linke Grafik) und andererseits, dass die Bewohner*innen der Stadt Zürich im Jahr 2023 trotz einer hohen Unzufriedenheit mit dem Wohnungsangebot sehr gerne bis gerne in der Stadt wohnen (rechte Grafik).
+
+<details><summary><span style="color: grey; font-size: 11px">Show R code</span></summary>
+```{r message=FALSE, warning=FALSE}
+#change of outcome variable over years
+p.hmJahr <- ggplot(df, aes(Wohnungsangebot, Jahr)) + 
+  scale_fill_viridis(name="") +
+  geom_bin2d() +
+  scale_x_discrete(position = "top", labels = function(x) str_wrap(x, width = 10)) +
+  scale_y_discrete() + #limits = rev(levels(df$Jahr))
+  labs(title = "Veränderung der Zufriedenheit mit Wohnungsangebot",
+       subtitle = "Bevölkerungsumfragen 2019 - 2023") +
+    xlab(label = "") +
+  ylab(label = "") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+
+#just for 2023!
+p.hmZufr <- ggplot(df[df$Jahr==2023,], aes(Wohnungsangebot, Beliebtheit)) + 
+  scale_fill_viridis(name="") +
+  geom_bin2d() +
+  scale_x_discrete(position = "top", labels = function(x) str_wrap(x, width = 10)) +
+  scale_y_discrete(limits = rev(levels(df$Beliebtheit))) +
+  labs(title = "Zufriedenheit mit Wohnungsangebot und Beliebtheit",
+       subtitle = "Bevölkerungsumfrage 2023") +
+    xlab(label = "") +
+  ylab(label = "") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+```
+</details>
+```{r echo=FALSE, fig.align="center", fig.width=12, fig.height=3, message=FALSE, warning=FALSE}
+gridExtra::grid.arrange(p.hmJahr, p.hmZufr, nrow = 1)
+```
+<br>
+
+Wenn man die Zufriedenheit mit dem Wohnungsangebot nach Altersgruppen aufschlüsselt (linke Grafik, nur Umfragerunde 2023), dass die mittleren Altersklassen deutlich unzufriedener mit dem Wohnungsangebot sind als die jüngeren von 18 - 29 Jahre und die älteren Einwohner*innen ab 60 Jahren. Das mag daran liegen, dass die Gruppe der mittleren Altersklassen zwischen 30 und 59 Jahren die grösste Bevölkerungsschicht darstellt. Die Aufschlüsselung nach Geschlecht hingegen (rechte Grafik, ebenfalls nur Umfragerunde 2023) zeigt nur leichte Unterschiede in der Zufriedenheit mit dem Wohnungsangebot zwischen Männern und Frauen, was mit einem mehr oder weniger ausgeglichenen Geschlechter-Verhältnis zu erklären ist.
+
+<details><summary><span style="color: grey; font-size: 11px">Show R code</span></summary>
+```{r message=FALSE, warning=FALSE}
+p.hmAlter <- ggplot(df[df$Jahr==2023,], aes(x=Wohnungsangebot, y=Alter)) + 
+  scale_fill_viridis(name="") +
+  geom_bin2d() +
+  scale_x_discrete(position = "top", labels = function(x) str_wrap(x, width = 10)) +
+  scale_y_discrete(limits = rev(levels(df$Alter))) +
+  labs(title = "Zufriedenheit mit Wohnungsangebot nach Altersgruppen",
+       subtitle = "Bevölkerungsumfrage 2023") +
+    xlab(label = "") +
+  ylab(label = "") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+
+p.hmGeschl <- ggplot(df[df$Jahr==2023,], aes(Wohnungsangebot, Geschlecht)) + 
+  scale_fill_viridis(name="") +
+  geom_bin2d() +
+  scale_x_discrete(position = "top", labels = function(x) str_wrap(x, width = 10)) +
+  scale_y_discrete(limits = rev(levels(df$Geschlecht))) +
+  labs(title = "Zufriedenheit mit Wohnungsangebot nach Geschlecht",
+       subtitle = "Bevölkerungsumfrage 2023") +
+  xlab(label = "") +
+  ylab(label = "") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank())
+```
+</details>
+```{r echo=FALSE, fig.align="center", fig.width=12, fig.height=3, message=FALSE, warning=FALSE}
+gridExtra::grid.arrange(p.hmAlter, p.hmGeschl, nrow = 1)
+```
+<br>
+
+
+## Hypothesen  
+Ich gehe davon aus, dass es statistisch signifikante Unterschiede zwischen den Stadtkreisen in Bezug auf die Zufriedenheit mit dem Wohnungsangebot gibt. Um diese Hypothese überprüfen zu können, schätze ich zwei Modelle mittels dem Verfahren "ordered logistic regression". Bei der Variable von Interesse (Zufriedenheit mit dem Wohnungsangebot) handelt es sich um eine geordnete kategoriale Variable, womit die Verwendung dieser statistischen Methode angezeigt ist. Um zu überprüfen, ob die Stadtkreise einen nicht zu vernachlässigenden Erklärungsgehalt mit sich bringen, wird ein Modell ohne und ein Modell mit den Stadtkreisen als erkärendende Variable geschätzt. Beide Modelle enthalten zudem die Kontrollvariablen "Alter" und "Geschlecht", um den Einfluss von Unterschieden zwischen diesen Merkmalen im Ergebnis der statistischen Analyse auszuschliessen. Anschliessend werden wie beiden Modelle mit dem Likelihood-Ratio Test verglichen.
+
+<details><summary><span style="color: grey; font-size: 11px">Show R code</span></summary>
+```{r message=FALSE, warning=FALSE}
+#just for 2023!
+fit1 <- polr(Wohnungsangebot ~ Alter + Geschlecht, data = df[df$Jahr==2023], Hess = TRUE, method = "logistic")
+#summary(fit1)
+#b1 <- brant(fit1)
+#k.b1 <- kable(b1, digits = 3)
+#if the probability (p-value) is greater than the alpha level (0.05), then the null hypothesis that the parameters (slope coefficients) are the same across response categories is accepted
+
+ctable1 <- coef(summary(fit1))
+p1 <- pnorm(abs(ctable1[, "t value"]), lower.tail = FALSE) * 2 # Rechnet mit Spalte "t value" als q zweiseitige p-Values
+ctable1 <- cbind(ctable1, `p value` = round(p1, 3))
+k1 <- kable(ctable1, caption = "Modell 1", digits = 3)
+
+fit2 <- polr(Wohnungsangebot ~ Alter + Geschlecht + Kreis, data = df[df$Jahr==2023], Hess = TRUE, method = "probit")
+#summary(fit2)
+#b2 <- brant(fit2)
+#k.b2 <- kable(b2, digits = 3)
+#if the probability (p-value) is greater than the alpha level (0.05), then the null hypothesis that the parameters (slope coefficients) are the same across response categories is accepted
+ctable2 <- coef(summary(fit2))
+p2 <- pnorm(abs(ctable2[, "t value"]), lower.tail = FALSE) * 2 # Rechnet mit Spalte "t value" als q zweiseitige p-Values
+ctable2 <- cbind(ctable2, `p value` = round(p2, 3))
+k2 <- kable(ctable2, caption = "Modell 2", digits = 3)
+```
+</details>
+
+```{r echo=FALSE, fig.align="center", fig.width=12, fig.height=3, message=FALSE, warning=FALSE}
+k1
+```
+Das Modell 1 (ohne Stadtkreise) zeigt, dass die Variablen "Alter" (in 3 Altersklassen, Basiskategorie ist die Gruppe der Alter zwischen 18 - 29 Jahre), die Variable "Geschlecht" (die Basiskategorie ist männlich) sowie die Schnittpunkte der Antwortwahrscheinlichkeiten der Antwort-Variablen "Zufriedenheit" auf einem 99.9 % Level statistisch signifikant sind. Dies ist an der Spalte "p-Value" erkennbar.
+
+```{r echo=FALSE, fig.align="center", fig.width=12, fig.height=3, message=FALSE, warning=FALSE}
+k2
+```
+Im Modell 2 (mit Stadtkreisen) ist ersichtlich, dass die bisherigen Variablen "Alter" sowie "Geschlecht" ebenfalls statistisch signifikant sind. Zusätzlich zeigt Modell 2, dass für die Stadtkreise ebenfalls grösstenteils signifikante Koeffizienten auf Basis der Umfragedaten geschätzt werden können. Nur die Kreise 2 und 3 zeigen keine auf einem üblichen Konfidenzniveau signifikanten p-Werte.
+
+Der Likelihood-Ratio Test, der wie oben beschrieben zum Vergleich des Erklärungsgehaltes von geschachtelten Modellen hinzugezogen wird, zeigt eine Wahrscheinlichkeit von <0.001% an, dass die beiden Modelle sich nicht statistisch von einander unterscheiden. Das Modell 2, das die Stadtkreise berücksichtigt, weist mit eine bessere Passung an die Daten als das Modell 1 (LogLikelihood Modell 2 mit -566040 gegenüber Modell 1 mit -568126). Damit kann verworfen werden, dass sich Modell 1 und 2 nicht unterschieden; ferner bestätigt der statistische Test, dass das Modell 2 mit Einbezug der Stadtkreise einen besseren Erklärungsgehalt liefert als das Modell 1, das die Stadtkreise unberücksichtigt lässt.
+<details><summary><span style="color: grey; font-size: 11px">Show R code</span></summary>
+```{r message=FALSE, warning=FALSE}
+lrtest(fit1, fit2) 
+```
+</details>
+<br> 
+
+Die Werte der obigen zwei Tabellen stellen "logged Odds" dar und können inhaltlich nicht direkt interpretiert werden, weil diese Modelle von einer logistischen, nicht-linearen Verteilung der Daten ausgehen. In der anschliessenden grafischen Darstellung wird deshalb gezeigt, wie sich die Wahrscheinlichkeiten zur Zufriedenheit mit dem Wohnungsangebot zwischen den Stadtkreisen unterscheiden. Angenommen wird dabei, dass es sich um eine Frau zwischne 30 und 59 Jahren handelt.
+
+<details><summary><span style="color: grey; font-size: 11px">Show R code</span></summary>
+```{r message=FALSE, warning=FALSE}
+output <- predicts(fit2, "mode;mode;all")
+output$Kreis <- factor(output$Kreis, levels = c("Kreis 1", "Kreis 2", "Kreis 3", "Kreis 4", "Kreis 5", "Kreis 6", "Kreis 7", "Kreis 8", "Kreis 9", "Kreis 10", "Kreis 11", "Kreis 12"))
+
+o1 <- ggplot(output, aes(x = Kreis, fill = level,col = level, y = mean)) +
+geom_point() +
+  geom_line(aes(group=level)) +
+  scale_fill_discrete(name="")+
+  scale_color_discrete(name="") +
+geom_errorbar(aes(ymax = upper, ymin = lower), width=0.5) +
+theme_minimal() + 
+ylab("Antwortwahrscheinlichkeiten") + 
+  xlab(label = "") +
+  ggtitle("Zufriedenheit mit Wohnungsangebot einer 30 - 59 jährigen Frau nach Stadtkreisen", subtitle = "Bevölkerungsberagung 2023")
+```
+</details>
+<br> 
+
+```{r echo=FALSE, fig.align="center", fig.width=12, fig.height=6, message=FALSE, warning=FALSE}
+o1
+```
+<br> 
+
+## Interpretation
+Die Grafik zeigt, dass vor allem im Kreis 4 die Unzufriedenheit mit dem Wohnungsangebot am höchsten ausfällt, gefolgt von den Kreisen 3, 1, 2 sowie dem Kreis 10. Die tiefste Unzufriedenheit zeigt sich im Kreis 12, gefolgt vom Kreis 8. Allgemein hält sich eine grosse Zufriedenheit mit dem Wohnungsangebot über alle Kreise in sehr engen Grenzen.
+Diese Unterschiede in der Wahrnehmumg des verfügbaren Wohnungsangebots steht vermutlich mit deutlichen Unterschieden in den sozio-ökonomischen Merkmalen der Wohnbevölkerung in den verschiedenen Stadtkreisen in Zusammenhang. Eine weitere und vertiefte statistische Analyse müsste deshalb auf der Nachfrageseite mehr Variablen zu sozio-ökonomischen Merkmalen wie verfügbares Einkommen, Ausbildungsniveau, Beruf beinhalten. Weiter spielt sicher auch die jeweilige Lebenssituation der Wohnbevölkerung eine Rolle; Singles haben einen anderen Bedarf an Wohnraum als das Familien haben. Auf der Angebotsseite müsste berücksichtigt werden, wie der verfügbare Wohnraum benützt wird. Es ist davon auszugehen, dass es Unterschiede in der durchschnittlichen Nutzungsfläche pro Person zwischen den verschiedenen Stadtkreisen gibt. Dies soll an einem Beispiel illustriert werden: Eine Wohngenossenschaft, in der sich drei Personen in Wiedikon rund 100 m2 Wohnfläche teilen, wird wahrscheinlich unzufriedener sein mit einem knappen Wohnungsangebot als eine Einzelperson, der alleine eine 250 m2 grosse Villa am Zürichberg bewohnt.
